@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  BUILD_TYPE: Release
+  GH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+  
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+
+jobs:
+  build_arm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        persist-credentials: false
+        ref: 'main'
+    - uses: pguyot/arm-runner-action@v2
+      id: ustore_deps_arm
+      with:
+        base_image: raspios_lite_arm64:latest
+        image_additional_mb: 14336
+        commands: |
+          sudo apt install -y python3 python3-dev python3-pip build-essential cmake git
+          git clone https://github.com/gurgenyegoryan/test-rocks.git
+          cd test-rocks/
+          python -m pip install --force-reinstall conan==1.60.1
+          sed -i 's/^\(.*\)cmake = CMake(self)/# \1cmake = CMake(self)/; s/^\(.*\)cmake.configure()/# \1cmake.configure()/; s/^\(.*\)cmake.build()/# \1cmake.build()\n       pass/' ./conanfile.py
+          conan profile new --detect default
+          conan profile update settings.compiler=gcc default
+          conan profile update settings.compiler.version=11 default
+          conan profile update settings.compiler.libcxx=libstdc++11 default
+          # export CONAN_DISABLE_CHECK_COMPILER=1
+          conan create . unum/arm_linux --build=missing -env CONAN_DISABLE_CHECK_COMPILER=1
+          cd ~/.conan && tar -czvf ustore_deps_arm_linux.tar.gz data/ && \
+          mkdir archive && mv ustore_deps_arm_linux.tar.gz archive
+        copy_repository_path: ~/.conan/archive
+    
+    - name: Check where file
+      run: ls && ls archive/
